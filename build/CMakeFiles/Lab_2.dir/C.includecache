@@ -1,0 +1,28 @@
+#IncludeRegexLine: ^[ 	]*[#%][ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+/mnt/d/CPP/Lab2/main.c
+return_codes.h
+/mnt/d/CPP/Lab2/return_codes.h
+malloc.h
+-
+math.h
+-
+stdbool.h
+-
+stdio.h
+-
+string.h
+-
+zlib.h
+-
+libdeflate.h
+-
+
+/mnt/d/CPP/Lab2/return_codes.h
+

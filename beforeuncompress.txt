@@ -1,0 +1,212 @@
+#include "return_codes.h"
+#include <stdio.h>
+#include <string.h>
+#include <stdbool.h>
+#include "zlib.h"
+#include <malloc.h>
+
+#define START_BUFF_LEN 1024
+
+typedef union
+{
+    unsigned int converted;
+    unsigned char mini[4];
+} ConverterCharsToInt;
+
+typedef struct
+{
+    unsigned int height;
+    unsigned int width;
+    unsigned short bitdepth;
+    unsigned short typeofcolor;
+} MetaOfAllPNG;
+
+typedef struct
+{
+    size_t size;
+    size_t realsize;
+} MetaOfBuf;
+
+bool skipUselessInf(FILE *f, size_t bytestoskip) {
+    unsigned char *tmp = malloc(sizeof(unsigned char) * bytestoskip);
+    if (fread(tmp, sizeof(unsigned char), bytestoskip, f) != bytestoskip) {
+        return false;
+    }
+    free(tmp);
+    return true;
+}
+
+bool readBufOfChars(FILE *f, unsigned char *buf, size_t size)
+{
+    return fread(buf, sizeof(unsigned char), size, f) == size;
+}
+
+bool oneByteToShort(FILE *f, unsigned short *future)
+{
+    unsigned char a[1];
+    if (!readBufOfChars(f, a, 1))
+    {
+        return false;
+    }
+    *future = (unsigned short) a[0];
+    return true;
+}
+
+bool fourBytesToInt(FILE *f, unsigned int *futureint)
+{
+    ConverterCharsToInt m;
+    int tmp;
+    if (!readBufOfChars(f, m.mini, 4))
+    {
+        return false;
+    }
+
+    for (int i = 0; i < 2; i++)
+    {
+        tmp = m.mini[i];
+        m.mini[i] = m.mini[3 - i];
+        m.mini[3 - i] = tmp;
+    }
+    *futureint = m.converted;
+    return true;
+}
+
+bool nameOfChank(FILE *f, unsigned char *futurename) {
+    return readBufOfChars(f, futurename, 4);
+}
+
+bool resize(unsigned char *buf, MetaOfBuf *met, unsigned int tolen) {
+
+    while (met->size - met->realsize < tolen + 10)
+    {
+        buf = realloc(buf, met->size * 2);
+        if (buf == NULL)
+        {
+            return false;
+        }
+        met->size *= 2;
+    }
+    return true;
+}
+
+// -1 -bad news
+// 0 continue
+// 1 the logical end
+int readAllChank(FILE *f, unsigned char *buf, MetaOfAllPNG *meta, MetaOfBuf *mbuf) {
+     unsigned char name[5];
+     unsigned int currlen = 0;
+
+     if (!(fourBytesToInt(f, &currlen) && nameOfChank(f, name)))
+     {
+        return -1;
+     }
+
+     if (strcmp((char *) name, "IDAT\0") == 0) {
+        if (!resize(buf, mbuf, currlen) || !readBufOfChars(f, &buf[mbuf->realsize], currlen))
+        {
+            return -1;
+        }
+        mbuf->realsize += currlen;
+     } else if (strcmp((char *) name, "IEND\0") == 0) {
+         return 1;
+     } else if (strcmp((char *) name, "IHDR\0") == 0) {
+        fourBytesToInt(f, &meta->width);
+        fourBytesToInt(f, &meta->height);
+        oneByteToShort(f, &meta->bitdepth);
+        oneByteToShort(f, &meta->typeofcolor);
+        skipUselessInf(f, 3);
+     }  else {
+         skipUselessInf(f, currlen);
+     }
+
+     // skip control sum bytes
+     skipUselessInf(f, 4);
+     return 0;
+}
+
+bool checkPNGFormat(FILE *f) {
+    unsigned char mini[5];
+    unsigned char correctpngheader[5] = { -119, 80, 78, 71, 0};
+
+    readBufOfChars(f, mini, 4);
+    skipUselessInf(f, 4);
+    return strcmp((char *) mini, (char *) correctpngheader) == 0;
+}
+
+int main(int argc, char *argv[])
+{
+    if (argc != 3)
+    {
+        perror("Too small params in input!");
+        return ERROR_INVALID_PARAMETER;
+    }
+
+    FILE *image = fopen(*(argv + 1), "rb");
+    if (image == NULL)
+    {
+        perror("Couldn't open file!");
+        return ERROR_FILE_NOT_FOUND;
+    }
+
+    if (!checkPNGFormat(image))
+    {
+        perror("Not PNG file!");
+        return ERROR_INVALID_DATA;
+    }
+    MetaOfAllPNG metapng = {
+            .height = 0,
+            .width = 0,
+            .bitdepth = 0,
+            .typeofcolor = 0
+    };
+    MetaOfBuf metaBuf = {
+            .size = START_BUFF_LEN,
+            .realsize = 0
+    };
+    unsigned char *buffer = malloc(sizeof(char) * START_BUFF_LEN);
+
+    if (buffer == NULL) {
+        perror("Problems with memory!");
+        fclose(image);
+        return ERROR_MEMORY;
+    }
+
+    int error;
+    do {
+        error = readAllChunk(image, buffer, &metapng, &metaBuf);
+    } while (error == 0);
+
+    if (error == -1) {
+        perror("This file is broken or was not enought memory to use!");
+        free(buffer);
+        fclose(image);
+        return ERROR_INVALID_DATA;
+    }
+    unsigned char *allundata = malloc(sizeof(unsigned char) * metaBuf.realsize * 20);
+    uLongf *ptr = (uLongf *) (metaBuf.realsize * 20);
+    if (allundata == NULL) {
+        return ERROR_NOT_ENOUGH_MEMORY;
+    }
+    printf("%llu", strlen((char *)buffer));
+    if (uncompress(allundata, ptr, buffer, (uLong) metaBuf.realsize) != Z_OK)
+    {
+        printf("11");
+    }
+    //Z_BUF_ERROR
+    //Z_MEM_ERROR
+    //Z_DATA_ERROR
+    /*if  (!readBufOfChars(image, buffer, BUFF_LEN))
+    {
+        perror("Ops");
+    }
+    uLong compressBound();
+    //uncompress(buffer, );
+    for (int i = 0; i < BUFF_LEN; i++)
+    {
+        printf("%c", buffer[i]);
+    }
+    */
+    printf("Yes");
+    fclose(image);
+    return ERROR_SUCCESS;
+}

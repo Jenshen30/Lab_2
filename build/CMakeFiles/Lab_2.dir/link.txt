@@ -1,0 +1,1 @@
+/usr/bin/cc    CMakeFiles/Lab_2.dir/main.c.o  -o Lab_2  -Wl,-rpath,/usr/local/lib ../cmake-build-debug/libdeflate.dll /usr/local/lib/libz.so 
