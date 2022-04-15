@@ -3,7 +3,6 @@
 #include <math.h>
 #include <stdbool.h>
 #include <stdio.h>
-#include <string.h>
 
 
 #define abs(X) (((X) < 0) ? -(X) : (X))
@@ -37,6 +36,10 @@
 #endif
 
 #define START_BUFF_LEN 32
+unsigned const char IHDR[4] = {0x49, 0x48, 0x44, 0x52};
+unsigned const char IDAT[4] = {0x49, 0x44, 0x41, 0x54};
+unsigned const char IEND[4] = {0x49, 0x45, 0x4E, 0x44};
+
 
 typedef union
 {
@@ -237,6 +240,17 @@ int defillteringOneHe(unsigned char *buf, size_t *currpos, MetaOfAllPNG meta)
 	}
 	return -1;
 }
+int compareStrings(unsigned const char *a, unsigned const char *b, size_t num)
+{
+	for(size_t i = 0; i < num; i++)
+	{
+		if (a[i] != b[i])
+		{
+			return -1;
+		}
+	}
+	return 0;
+}
 
 // -1 - bad news
 // 0 - continue
@@ -251,7 +265,7 @@ int readAllChunk(FILE *f, unsigned char **buf, MetaOfAllPNG *meta, MetaOfBuf *mb
 		return -1;
 	}
 
-	if (strncmp((char *)name, "IDAT", 4) == 0)
+	if (compareStrings(name, IDAT, 4) == 0)
 	{
 		if (!resize(buf, mbuf, currlen) || !readBufOfChars(f, *buf + mbuf->realsize, currlen))
 		{
@@ -259,11 +273,13 @@ int readAllChunk(FILE *f, unsigned char **buf, MetaOfAllPNG *meta, MetaOfBuf *mb
 		}
 		mbuf->realsize += currlen;
 	}
-	else if (strncmp((char *)name, "IEND", 4) == 0)
+	else if (compareStrings(name, IEND, 4) == 0)
 	{
-		return 1;
+		if (skipUselessInf(f, 4) && !skipUselessInf(f, 1))
+			return 1;
+		return -1;
 	}
-	else if (strncmp((char *)name, "IHDR", 4) == 0)
+	else if (compareStrings(name, IHDR, 4) == 0)
 	{
 		bool res = true;
 		res &= fourBytesToInt(f, &meta->width);
@@ -300,7 +316,7 @@ bool checkPNGFormat(FILE *f)
 	{
 		return false;
 	}
-	return strncmp((char *)mini, (char *)correctpngheader, 8) == 0;
+	return compareStrings(mini, correctpngheader, 8) == 0;
 }
 
 int main(int argc, char *argv[])
