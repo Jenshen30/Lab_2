@@ -5,20 +5,34 @@
 #include <stdio.h>
 #include <string.h>
 
-#include <isa-l.h>
 
-#define abs(X) (((X) < 0)?-(X):(X))
-
+#define abs(X) (((X) < 0) ? -(X) : (X))
 #if defined(ZLIB)
 	#include <zlib.h>
-	#define DECOMPRESSING(OUT, SIZE_OUT, IN, SIZE_IN) (uncompress(OUT, &SIZE_OUT, IN, (uLong)SIZE_IN) != Z_OK)
+	#define PRECOMPRESSING(OUT, SIZE_OUT, IN, SIZE_IN) ;
+	#define DECOMPRESSING(OUT, SIZE_OUT, IN, SIZE_IN)  (uncompress(OUT, &SIZE_OUT, IN, (uLong)SIZE_IN) != Z_OK)
 
 #elif defined(LIBDEFLATE)
-	#include <libdeflate.h>
+	#include "libdeflate.h"
 	#define DECOMPRESSING(OUT, SIZE_OUT, IN, SIZE_IN) \
 		(libdeflate_zlib_decompress(libdeflate_alloc_decompressor(), IN, SIZE_IN, OUT, SIZE_OUT, NULL) != LIBDEFLATE_SUCCESS)
+	#define PRECOMPRESSING(OUT, SIZE_OUT, IN, SIZE_IN) ;
+#elif defined(ISAL)
+	#include <include/igzip_lib.h>
+	#define PRECOMPRESSING(OUT, SIZE_OUT, IN, SIZE_IN) \
+		struct inflate_state isa;                      \
+		isal_inflate_init(&isa);                       \
+		isa.crc_flag = IGZIP_ZLIB;                     \
+		isa.next_in = IN;                              \
+		isa.avail_in = SIZE_IN;                        \
+		isa.next_out = OUT;                            \
+		isa.avail_out = SIZE_OUT;
+
+	#define DECOMPRESSING(OUT, SIZE_OUT, IN, SIZE_IN) (isal_inflate(&isa) != ISAL_DECOMP_OK)
+
 #else
 	#error("Did't choose any right lib or it is a ISA-L (")
+	#define PRECOMPRESSING(OUT, SIZE_OUT, IN, SIZE_IN) ;
 	#define DECOMPRESSING(OUT, SIZE_OUT, IN, SIZE_IN) false
 #endif
 
@@ -54,6 +68,7 @@ bool skipUselessInf(FILE *f, unsigned int bytestoskip)
 			return false;
 		}
 	}
+
 	return true;
 }
 
@@ -279,13 +294,13 @@ int readAllChunk(FILE *f, unsigned char **buf, MetaOfAllPNG *meta, MetaOfBuf *mb
 
 bool checkPNGFormat(FILE *f)
 {
-	unsigned char mini[4];
-	unsigned char correctpngheader[4] = { 137, 'P', 'N', 'G'};
-	if (!readBufOfChars(f, mini, 4) || !skipUselessInf(f, 4))
+	unsigned char mini[8];
+	unsigned char correctpngheader[8] = { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A };
+	if (!readBufOfChars(f, mini, 8))
 	{
 		return false;
 	}
-	return strncmp((char *)mini, (char *)correctpngheader, 4) == 0;
+	return strncmp((char *)mini, (char *)correctpngheader, 8) == 0;
 }
 
 int main(int argc, char *argv[])
@@ -303,7 +318,7 @@ int main(int argc, char *argv[])
 		return ERROR_FILE_NOT_FOUND;
 	}
 
-	if (!checkPNGFormat( image))
+	if (!checkPNGFormat(image))
 	{
 		perror("Not PNG file!");
 		fclose(image);
@@ -344,7 +359,7 @@ int main(int argc, char *argv[])
 		fclose(image);
 		return ERROR_NOT_ENOUGH_MEMORY;
 	}
-
+	PRECOMPRESSING(allundata, uncompesedlen, buffer, metaBuf.realsize)
 	// decompress
 	if (DECOMPRESSING(allundata, uncompesedlen, buffer, metaBuf.realsize))
 	{
