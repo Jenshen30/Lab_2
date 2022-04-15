@@ -4,7 +4,6 @@
 #include <stdbool.h>
 #include <stdio.h>
 
-
 #define abs(X) (((X) < 0) ? -(X) : (X))
 #if defined(ZLIB)
 	#include <zlib.h>
@@ -12,7 +11,7 @@
 	#define DECOMPRESSING(OUT, SIZE_OUT, IN, SIZE_IN)  (uncompress(OUT, &SIZE_OUT, IN, (uLong)SIZE_IN) != Z_OK)
 
 #elif defined(LIBDEFLATE)
-	#include "libdeflate.h"
+	#include <libdeflate.h>
 	#define DECOMPRESSING(OUT, SIZE_OUT, IN, SIZE_IN) \
 		(libdeflate_zlib_decompress(libdeflate_alloc_decompressor(), IN, SIZE_IN, OUT, SIZE_OUT, NULL) != LIBDEFLATE_SUCCESS)
 	#define PRECOMPRESSING(OUT, SIZE_OUT, IN, SIZE_IN) ;
@@ -32,14 +31,13 @@
 #else
 	#error("Did't choose any right lib or it is a ISA-L (")
 	#define PRECOMPRESSING(OUT, SIZE_OUT, IN, SIZE_IN) ;
-	#define DECOMPRESSING(OUT, SIZE_OUT, IN, SIZE_IN) false
+	#define DECOMPRESSING(OUT, SIZE_OUT, IN, SIZE_IN)  false
 #endif
 
 #define START_BUFF_LEN 32
-unsigned const char IHDR[4] = {0x49, 0x48, 0x44, 0x52};
-unsigned const char IDAT[4] = {0x49, 0x44, 0x41, 0x54};
-unsigned const char IEND[4] = {0x49, 0x45, 0x4E, 0x44};
-
+unsigned const char IHDR[4] = { 0x49, 0x48, 0x44, 0x52 };
+unsigned const char IDAT[4] = { 0x49, 0x44, 0x41, 0x54 };
+unsigned const char IEND[4] = { 0x49, 0x45, 0x4E, 0x44 };
 
 typedef union
 {
@@ -119,12 +117,14 @@ bool resize(unsigned char **buf, MetaOfBuf *met, unsigned int tolen)
 {
 	while (met->size - met->realsize < tolen + 2)
 	{
-		*buf = realloc(*buf, sizeof(unsigned char) * met->size * 2);
-		if (*buf == NULL)
+		unsigned char *tmp = realloc(*buf, sizeof(unsigned char) * met->size * 2);
+		if (tmp == NULL)
 		{
+			free(buf);
 			return false;
 		}
 		met->size *= 2;
+		*buf = tmp;
 	}
 	return true;
 }
@@ -242,7 +242,7 @@ int defillteringOneHe(unsigned char *buf, size_t *currpos, MetaOfAllPNG meta)
 }
 int compareStrings(unsigned const char *a, unsigned const char *b, size_t num)
 {
-	for(size_t i = 0; i < num; i++)
+	for (size_t i = 0; i < num; i++)
 	{
 		if (a[i] != b[i])
 		{
